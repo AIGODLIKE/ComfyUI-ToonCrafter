@@ -16,8 +16,7 @@ You can use it to achieve generative keyframe animation
     <img src=https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/cf7c1d18-33a4-45e6-bc9a-9f7dc53b0547 width="250">
   </td>
   <td>
-    <img src=https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/ab9dad3c-b843-41a7-a124-d2375fb0cb35 width="250">
+    <img src=https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/9a10f89b-e515-44db-869d-1769ae7d9677 width="250">
   </td>
   </tr>
-
 </table>
