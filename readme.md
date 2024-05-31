@@ -1,7 +1,18 @@
+# Introduction
 This project is used to enable [ToonCrafter](https://github.com/ToonCrafter/ToonCrafter) to be used in ComfyUI.
-And use it in Blender for animation rendering and prediction
-The code will be released on June 2nd
+
 You can use it to achieve generative keyframe animation
+
+And use it in Blender for animation rendering and prediction
+
+## Comming Soon
+
+The code will be released on June 2nd
+
+## Showcases
+
+Directly used for Blender's rendering output
+
 <table class="center">
     <tr style="font-weight: bolder;text-align:center;">
         <td>Input starting frame</td>
