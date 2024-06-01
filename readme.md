@@ -3,7 +3,7 @@ This project is used to enable [ToonCrafter](https://github.com/ToonCrafter/Toon
 
 You can use it to achieve generative keyframe animation(RTX 4090,26s)
 
-https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/2a3b58b7-83a1-4f15-9f41-0c92a58e2194
+https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/c305ef75-f0b7-48c1-8d55-7b24c129c6e9
 
 And use it in Blender for animation rendering and prediction
 
