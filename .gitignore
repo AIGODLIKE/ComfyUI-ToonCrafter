@@ -1,0 +1,11 @@
+.DS_Store
+*pyc
+.vscode
+__pycache__
+*.egg-info
+
+checkpoints
+ToonCrafter/checkpoints
+results
+backup
+LOG
