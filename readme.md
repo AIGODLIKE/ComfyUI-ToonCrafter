@@ -9,10 +9,10 @@ And use it in Blender for animation rendering and prediction
 1. ComfyUI Custom Node
    ```bash
    cd ComfyUI/custom_nodes
-   git clone https://github.com/AIGODLIKE/ ComfyUI-ToonCrafter
+   git clone https://github.com/AIGODLIKE/ComfyUI-ToonCrafter
    cd ComfyUI-ToonCrafter
    # install dependencies
-   ..\..\..\python_embeded\python.exe -m pip install -r  requirements.txt
+   ..\..\..\python_embeded\python.exe -m pip install -r requirements.txt
    ```
 2. Model Prepare [see here](https://github.com/ToonCrafter/ToonCrafter?tab=readme-ov-file#-models).
    - Download the model.ckpt
