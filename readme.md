@@ -21,7 +21,11 @@ And use it in Blender for animation rendering and prediction
 
 ## Showcases
 
-Directly used for Blender's rendering output
+###Blender
+
+You can even use it directly in Blender!([ComfyUI-BlenderAI-node](https://github.com/AIGODLIKE/ComfyUI-BlenderAI-node))
+
+https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/728589cd-324e-49d0-b816-2ad51106e63c
 
 <table class="center">
     <tr style="font-weight: bolder;text-align:center;">
