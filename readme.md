@@ -5,9 +5,19 @@ You can use it to achieve generative keyframe animation
 
 And use it in Blender for animation rendering and prediction
 
-## Comming Soon
-
-The code will be released on June 2nd
+## Installation
+1. ComfyUI Custom Node
+   ```bash
+   cd ComfyUI/custom_nodes
+   git clone https://github.com/AIGODLIKE/ ComfyUI-ToonCrafter
+   cd ComfyUI-ToonCrafter
+   # install dependencies
+   ..\..\..\python_embeded\python.exe -m pip install -r  requirements.txt
+   ```
+2. Model Prepare [see here](https://github.com/ToonCrafter/ToonCrafter?tab=readme-ov-file#-models).
+   - Download the model.ckpt
+   - Put it in into `ComfyUI-ToonCrafter\ToonCrafter\checkpoints\tooncrafter_512_interp_v1` for example 512x512.
+3. Enjoy it!
 
 ## Showcases
 
