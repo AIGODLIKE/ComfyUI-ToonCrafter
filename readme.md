@@ -25,7 +25,7 @@ And use it in Blender for animation rendering and prediction
 
 ## Showcases
 
-###Blender
+### Blender
 
 You can even use it directly in Blender!([ComfyUI-BlenderAI-node](https://github.com/AIGODLIKE/ComfyUI-BlenderAI-node))
 
