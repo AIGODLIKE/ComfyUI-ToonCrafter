@@ -31,7 +31,7 @@ And use it in Blender for animation rendering and prediction
 
 You can even use it directly in Blender!([ComfyUI-BlenderAI-node](https://github.com/AIGODLIKE/ComfyUI-BlenderAI-node))
 
-https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/728589cd-324e-49d0-b816-2ad51106e63c
+https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/ca8ec681-b5bc-40a1-b12a-ad185acff477
 
 <table class="center">
     <tr style="font-weight: bolder;text-align:center;">
