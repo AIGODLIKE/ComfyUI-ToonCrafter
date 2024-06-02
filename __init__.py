@@ -4,6 +4,7 @@ import torch
 import time
 import logging as logger
 
+from functools import cache
 from pathlib import Path
 from contextlib import contextmanager, ExitStack
 from omegaconf import OmegaConf
@@ -12,6 +13,7 @@ from einops import repeat, rearrange
 from torchvision import transforms
 from pytorch_lightning import seed_everything
 from platform import system
+from comfy import model_management as mm
 
 if system() == "Darwin":
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -28,6 +30,17 @@ from ToonCrafter.utils.utils import instantiate_from_config
 from ToonCrafter.scripts.evaluation.funcs import load_model_checkpoint, batch_ddim_sampling
 
 
+@cache
+def get_models(root: Path = ROOT.joinpath("checkpoints")):
+    ckpts = []
+    files = []
+    for ext in ['ckpt', 'pt', 'bin', 'pth', 'safetensors', 'pkl']:
+        files.extend(root.rglob(f"*.{ext}"))
+    for file in files:
+        ckpts.append(file.relative_to(root).as_posix())
+    return sorted(ckpts)
+
+
 class ToonCrafterNode:
 
     @classmethod
@@ -36,6 +49,7 @@ class ToonCrafterNode:
             "required": {
                 "image": ("IMAGE", ),
                 "image2": ("IMAGE", ),
+                "ckpt_name": (get_models(), ),
                 "prompt": ("STRING", {"multiline": True, "dynamicPrompts": True}),
                 # "clip": ("CLIP", ),
                 "seed": ("INT", {"default": 123, "min": 0, "max": 0xffffffffffffffff}),
@@ -54,14 +68,18 @@ class ToonCrafterNode:
 
     CATEGORY = "ToonCrafter"
 
-    def __init__(self, result_dir=ROOT.joinpath("tmp/"), gpu_num=1, resolution='320_512') -> None:
+    def init(self, ckpt_name="", result_dir=ROOT.joinpath("tmp/"), gpu_num=1, resolution='320_512') -> None:
         h, w = resolution.split('_')
         self.resolution = int(h), int(w)
-        self.download_model()
+        # self.download_model()
 
         self.result_dir = result_dir
         Path(self.result_dir).mkdir(parents=True, exist_ok=True)
-        ckpt_path = ROOT.joinpath(f'checkpoints/tooncrafter_{w}_interp_v1', 'model.ckpt')
+        ckpt_path = ROOT.joinpath("checkpoints", ckpt_name)
+        if not ckpt_path.exists():
+            ckpt_path = ROOT.joinpath(f'checkpoints/tooncrafter_{w}_interp_v1', 'model.ckpt')
+        if not ckpt_path.exists():
+            raise Exception(f"ToonCrafterNode Error: {ckpt_path} Not Found!")
         config_file = ROOT.joinpath(f'configs/inference_{w}_v1.0.yaml')
         config = OmegaConf.load(config_file.as_posix())
         model_config = config.pop("model", OmegaConf.create())
@@ -89,7 +107,8 @@ class ToonCrafterNode:
             print(f"Autocast is not supported: {e}")
             yield
 
-    def get_image(self, image: torch.Tensor, prompt, steps=50, cfg_scale=7.5, eta=1.0, frame_count=3, fps=8, seed=123, image2: torch.Tensor = None):
+    def get_image(self, image: torch.Tensor, ckpt_name, prompt, steps=50, cfg_scale=7.5, eta=1.0, frame_count=3, fps=8, seed=123, image2: torch.Tensor = None):
+        self.init(ckpt_name=ckpt_name)
         self.save_fps = fps
         seed = seed % 4294967295
         seed_everything(seed)
@@ -97,10 +116,7 @@ class ToonCrafterNode:
             transforms.Resize(min(self.resolution)),
             transforms.CenterCrop(self.resolution),
         ])
-        if self.is_cuda:
-            torch.cuda.empty_cache()
-        elif self.is_mps:
-            torch.mps.empty_cache()
+        mm.soft_empty_cache()
         print('start:', prompt, time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
         start = time.time()
         gpu_id = 0
