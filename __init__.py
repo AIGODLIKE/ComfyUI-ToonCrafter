@@ -25,7 +25,7 @@ from ToonCrafter.utils.utils import instantiate_from_config
 from ToonCrafter.scripts.evaluation.funcs import load_model_checkpoint, batch_ddim_sampling
 
 
-class Image2Video:
+class ToonCrafterNode:
 
     @classmethod
     def INPUT_TYPES(s):
@@ -206,12 +206,12 @@ class Image2Video:
 
 
 NODE_CLASS_MAPPINGS = {
-    "Image2Video": Image2Video,
+    "ToonCrafterNode": ToonCrafterNode,
 }
 
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Image2Video": "Image to Video",
+    "ToonCrafterNode": "ToonCrafter",
 }
 
 WEB_DIRECTORY = "./"
