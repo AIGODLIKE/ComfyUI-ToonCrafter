@@ -36,11 +36,11 @@ class ToonCrafterNode:
                 "prompt": ("STRING", {"multiline": True, "dynamicPrompts": True}),
                 # "clip": ("CLIP", ),
                 "seed": ("INT", {"default": 123, "min": 0, "max": 0xffffffffffffffff}),
-                "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 15.0, "step": 0.1, "display": "slider"}),
-                "cfg_scale": ("FLOAT", {"default": 7.5, "min": 1.0, "max": 15.0, "step": 0.5, "display": "slider"}),
-                "steps": ("INT", {"default": 50, "min": 1, "max": 60, "step": 1, "display": "slider"}),
-                "frame_count": ("INT", {"default": 10, "min": 5, "max": 30, "step": 1, "display": "slider"}),
-                "fps": ("INT", {"default": 8, "min": 1, "max": 60, "step": 1, "display": "slider"}),
+                "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 15.0, "step": 0.1}),
+                "cfg_scale": ("FLOAT", {"default": 7.5, "min": 1.0, "max": 15.0, "step": 0.5}),
+                "steps": ("INT", {"default": 50, "min": 1, "max": 60, "step": 1}),
+                "frame_count": ("INT", {"default": 10, "min": 5, "max": 30, "step": 1}),
+                "fps": ("INT", {"default": 8, "min": 1, "max": 60, "step": 1}),
             }
         }
 
