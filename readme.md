@@ -20,8 +20,14 @@ And use it in Blender for animation rendering and prediction
    # install dependencies
    ..\..\..\python_embeded\python.exe -m pip install -r requirements.txt
    ```
-2. Model Prepare [see here](https://github.com/ToonCrafter/ToonCrafter?tab=readme-ov-file#-models).
-   - Download the model.ckpt
+2. Model Prepare
+   - Download the weights:
+
+     - [512 full weights](https://github.com/ToonCrafter/ToonCrafter?tab=readme-ov-file#-models) *High VRAM usage, fp16 reccomended*
+     
+     - [512 fp16 weights](https://huggingface.co/Kijai/DynamiCrafter_pruned/resolve/main/tooncrafter_512_interp-fp16.safetensors)
+
+
    - Put it in into `ComfyUI-ToonCrafter\ToonCrafter\checkpoints\tooncrafter_512_interp_v1` for example 512x512.
 3. Enjoy it!
 
