@@ -14,14 +14,10 @@ try:
     import xformers.ops
     XFORMERS_IS_AVAILABLE = True
 except:
-    try:
-        from ToonCrafter.utils.xformers import xformers
-        XFORMERS_IS_AVAILABLE = True
-    except:
-        XFORMERS_IS_AVAILABLE = False
-        logpy.warning("no module 'xformers'. Processing without...")
+    XFORMERS_IS_AVAILABLE = False
+    logpy.warning("no module 'xformers'. Processing without...")
 
-from lvdm.modules.attention_svd import LinearAttention, MemoryEfficientCrossAttention
+from lvdm.modules.attention_svd import LinearAttention, CrossAttention, MemoryEfficientCrossAttention
 
 
 def nonlinearity(x):
@@ -209,6 +205,15 @@ class MemoryEfficientAttnBlock(nn.Module):
         return x + h_
 
 
+class CrossAttentionWrapper(CrossAttention):
+    def forward(self, x, context=None, mask=None, **unused_kwargs):
+        b, c, h, w = x.shape
+        x = rearrange(x, "b c h w -> b 1 (h w) c").contiguous()
+        out = super().forward(x, context=context, mask=mask)
+        out = rearrange(out, "b 1 (h w) c -> b c h w", h=h, w=w, c=c, b=b)
+        return x + out
+
+
 class MemoryEfficientCrossAttentionWrapper(MemoryEfficientCrossAttention):
     def forward(self, x, context=None, mask=None, **unused_kwargs):
         b, c, h, w = x.shape
@@ -222,9 +227,11 @@ def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None):
     assert attn_type in [
         "vanilla",
         "vanilla-xformers",
+        "cross-attn",
         "memory-efficient-cross-attn",
         "linear",
         "none",
+        "cross-attn-fusion",
         "memory-efficient-cross-attn-fusion",
     ], f"attn_type {attn_type} unknown"
     if (
@@ -245,9 +252,15 @@ def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None):
             f"building MemoryEfficientAttnBlock with {in_channels} in_channels..."
         )
         return MemoryEfficientAttnBlock(in_channels)
+    elif attn_type == "cross-attn":
+        attn_kwargs["query_dim"] = in_channels
+        return CrossAttentionWrapper(**attn_kwargs)
     elif attn_type == "memory-efficient-cross-attn":
         attn_kwargs["query_dim"] = in_channels
         return MemoryEfficientCrossAttentionWrapper(**attn_kwargs)
+    elif attn_type == "cross-attn-fusion":
+        attn_kwargs["query_dim"] = in_channels
+        return CrossAttentionWrapperFusion(**attn_kwargs)
     elif attn_type == "memory-efficient-cross-attn-fusion":
         attn_kwargs["query_dim"] = in_channels
         return MemoryEfficientCrossAttentionWrapperFusion(**attn_kwargs)
@@ -255,6 +268,66 @@ def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None):
         return nn.Identity(in_channels)
     else:
         return LinAttnBlock(in_channels)
+
+
+class CrossAttentionWrapperFusion(CrossAttention):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0, **kwargs):
+        super().__init__(query_dim, context_dim, heads, dim_head, dropout, **kwargs)
+        self.dim_head = dim_head
+        self.norm = Normalize(query_dim)
+        nn.init.zeros_(self.to_out[0].weight)
+        nn.init.zeros_(self.to_out[0].bias)
+
+    def forward(self, x, context=None, mask=None):
+        if self.training:
+            return checkpoint(self._forward, x, context, mask, use_reentrant=False)
+        else:
+            return self._forward(x, context, mask)
+
+    def _forward(
+        self,
+        x,
+        context=None,
+        mask=None,
+    ):
+        bt, c, h, w = x.shape
+        h_ = self.norm(x)
+        h_ = rearrange(h_, "b c h w -> b (h w) c")
+        q = self.to_q(h_)
+
+        b, c, l, h, w = context.shape
+        context = rearrange(context, "b c l h w -> (b l) (h w) c")
+        k = self.to_k(context)
+        v = self.to_v(context)
+        k = rearrange(k, "(b l) d c -> b l d c", l=l)
+        k = torch.cat([k[:, [0] * (bt // b)], k[:, [1] * (bt // b)]], dim=2)
+        k = rearrange(k, "b l d c -> (b l) d c")
+
+        v = rearrange(v, "(b l) d c -> b l d c", l=l)
+        v = torch.cat([v[:, [0] * (bt // b)], v[:, [1] * (bt // b)]], dim=2)
+        v = rearrange(v, "b l d c -> (b l) d c")
+
+        b, _, _ = q.shape  # actually bt
+        q, k, v = map(
+            lambda t: t.unsqueeze(3)
+            .reshape(b, t.shape[1], self.heads, self.dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b * self.heads, t.shape[1], self.dim_head)
+            .contiguous(),
+            (q, k, v),
+        )
+
+        out = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+        out = (
+            out.unsqueeze(0)
+            .reshape(b, self.heads, out.shape[1], self.dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b, out.shape[1], self.heads * self.dim_head)
+        )
+        out = self.to_out(out)
+        out = rearrange(out, "bt (h w) c -> bt c h w", h=h, w=w, c=c)
+        return x + out
+
 
 class MemoryEfficientCrossAttentionWrapperFusion(MemoryEfficientCrossAttention):
     # print('x.shape: ',x.shape, 'context.shape: ',context.shape) ##torch.Size([8, 128, 256, 256]) torch.Size([1, 128, 2, 256, 256])
@@ -281,7 +354,6 @@ class MemoryEfficientCrossAttentionWrapperFusion(MemoryEfficientCrossAttention):
         h_ = rearrange(h_, "b c h w -> b (h w) c")
         q = self.to_q(h_)
 
-
         b, c, l, h, w = context.shape
         context = rearrange(context, "b c l h w -> (b l) (h w) c")
         k = self.to_k(context)
@@ -293,7 +365,6 @@ class MemoryEfficientCrossAttentionWrapperFusion(MemoryEfficientCrossAttention):
         v = rearrange(v, "(b l) d c -> b l d c", l=l)
         v = torch.cat([v[:, [0] * (bt//b)], v[:, [1]*(bt//b)]], dim=2)
         v = rearrange(v, "b l d c -> (b l) d c")
-
 
         b, _, _ = q.shape  ##actually bt
         q, k, v = map(
@@ -392,6 +463,8 @@ class Decoder(nn.Module):
         attn_level=[2,3], 
         **ignorekwargs,
     ):
+        if "vanilla-xformers" and XFORMERS_IS_AVAILABLE is False:
+            attn_type = "vanilla"
         super().__init__()
         if use_linear_attn:
             attn_type = "linear"
@@ -467,7 +540,8 @@ class Decoder(nn.Module):
             self.up.insert(0, up)  # prepend to get consistent order
 
             if i_level in self.attn_level:
-                self.attn_refinement.insert(0, make_attn_cls(block_in, attn_type='memory-efficient-cross-attn-fusion', attn_kwargs={}))
+                _attn_type = 'memory-efficient-cross-attn-fusion' if XFORMERS_IS_AVAILABLE else 'cross-attn-fusion'
+                self.attn_refinement.insert(0, make_attn_cls(block_in, attn_type=_attn_type, attn_kwargs={}))
             else:
                 self.attn_refinement.insert(0, Combiner(block_in))
         # end

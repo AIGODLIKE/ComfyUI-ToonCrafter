@@ -49,14 +49,11 @@ else:
 try:
     import xformers
     import xformers.ops
+
     XFORMERS_IS_AVAILABLE = True
 except:
-    try:
-        from ToonCrafter.utils.xformers import xformers
-        XFORMERS_IS_AVAILABLE = True
-    except:
-        XFORMERS_IS_AVAILABLE = False
-        logpy.warn("no module 'xformers'. Processing without...")
+    XFORMERS_IS_AVAILABLE = False
+    logpy.warn("no module 'xformers'. Processing without...")
 
 # from .diffusionmodules.util import mixed_checkpoint as checkpoint
 
@@ -167,6 +164,9 @@ class SelfAttention(nn.Module):
         proj_drop: float = 0.0,
         attn_mode: str = "xformers",
     ):
+        if attn_mode == "xformers" and XFORMERS_IS_AVAILABLE is False:
+            attn_mode = "torch"
+            logpy.warn("no module 'xformers'. Processing without...")
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -184,9 +184,7 @@ class SelfAttention(nn.Module):
 
         qkv = self.qkv(x)
         if self.attn_mode == "torch":
-            qkv = rearrange(
-                qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads
-            ).float()
+            qkv = rearrange(qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads).float()
             q, k, v = qkv[0], qkv[1], qkv[2]  # B H L D
             x = torch.nn.functional.scaled_dot_product_attention(q, k, v)
             x = rearrange(x, "B H L D -> B L (H D)")

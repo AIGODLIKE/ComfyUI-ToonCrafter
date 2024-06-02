@@ -8,11 +8,7 @@ try:
     import xformers.ops
     XFORMERS_IS_AVAILABLE = True
 except:
-    try:
-        from ToonCrafter.utils.xformers import xformers
-        XFORMERS_IS_AVAILABLE = True
-    except:
-        XFORMERS_IS_AVAILABLE = False
+    XFORMERS_IS_AVAILABLE = False
 from lvdm.common import (
     checkpoint,
     exists,
