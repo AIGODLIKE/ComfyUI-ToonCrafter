@@ -15,8 +15,9 @@ from platform import system
 
 if system() == "Darwin":
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-    os.environ["XH_HOME"] = "~/.cache/huggingface"
+    os.environ["HF_HOME"] = "~/.cache/huggingface"
 os.environ["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
+os.environ["USER_DEF_CLIP"] = Path(__file__).parent.joinpath("models/open_clip_pytorch_model.bin")
 # os.environ["no_proxy"] = "localhost, 127.0.0.1, ::1"
 
 ROOT = Path(__file__).parent.joinpath("ToonCrafter")
