@@ -9,7 +9,7 @@ https://github.com/AIGODLIKE/ComfyUI-ToonCrafter/assets/116185401/86553c22-9395-
 
 And use it in Blender for animation rendering and prediction
 
-
+**Additionally, it can be used completely without a network**
 
 ## Installation
 1. ComfyUI Custom Node
