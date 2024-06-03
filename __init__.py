@@ -14,6 +14,7 @@ from torchvision import transforms
 from pytorch_lightning import seed_everything
 from platform import system
 from comfy import model_management as mm
+from comfy.utils import ProgressBar
 
 if system() == "Darwin":
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -132,7 +133,7 @@ class ToonCrafterNode:
         frames = model.temporal_length
         h, w = self.resolution[0] // 8, self.resolution[1] // 8
         noise_shape = [batch_size, channels, frames, h, w]
-
+        pbar = ProgressBar(steps)
         # text cond
         with ExitStack() as stack:
             stack.enter_context(torch.no_grad())
@@ -172,8 +173,12 @@ class ToonCrafterNode:
             fs = torch.tensor([frame_count], dtype=torch.long, device=model.device)
             cond = {"c_crossattn": [imtext_cond], "fs": fs, "c_concat": [img_tensor_repeat]}
 
+            def cb(step):
+                print(f"step: {step}", end='\r')
+                pbar.update_absolute(step)
+
             # inference
-            batch_samples = batch_ddim_sampling(model, cond, noise_shape, n_samples=1, ddim_steps=steps, ddim_eta=eta, cfg_scale=cfg_scale, hs=hs)
+            batch_samples = batch_ddim_sampling(model, cond, noise_shape, n_samples=1, ddim_steps=steps, ddim_eta=eta, cfg_scale=cfg_scale, hs=hs, callback=cb)
 
             # remove the last frame
             if image2 is None:
