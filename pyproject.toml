@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-tooncrafter"
+description = "This project is used to enable [a/ToonCrafter](https://github.com/ToonCrafter/ToonCrafter) to be used in ComfyUI.\nYou can use it to achieve generative keyframe animation\nAnd use it in Blender for animation rendering and prediction"
+version = "1.0.0"
+license = "LICENSE"
+dependencies = ["imageio==2.9.0", "numpy", "omegaconf==2.1.1", "opencv_python", "pandas", "pytorch_lightning==1.9.3", "pyyaml", "setuptools", "moviepy", "av", "xformers", "timm", "scikit-learn", "open_clip_torch==2.22.0", "decord==0.6.0"]
+
+[project.urls]
+Repository = "https://github.com/AIGODLIKE/ComfyUI-ToonCrafter"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-ToonCrafter"
+Icon = ""
