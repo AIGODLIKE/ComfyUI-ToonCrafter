@@ -257,19 +257,16 @@ def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddi
                                             guidance_rescale=guidance_rescale,
                                             **kwargs
                                             )
-
         ## reconstruct from latent to pixel space
         batch_images = model.decode_first_stage(samples, **additional_decode_kwargs)
 
         index = list(range(samples.shape[2]))
         del index[1]
         del index[-2]
-        samples = samples[:,:,index,:,:]
+        samples = samples[:, :, index, :, :]
         ## reconstruct from latent to pixel space
         batch_images_middle = model.decode_first_stage(samples, **additional_decode_kwargs)
-        batch_images[:,:,batch_images.shape[2]//2-1:batch_images.shape[2]//2+1] = batch_images_middle[:,:,batch_images.shape[2]//2-2:batch_images.shape[2]//2]
-
-
+        batch_images[:, :, batch_images.shape[2] // 2 - 1:batch_images.shape[2] // 2 + 1] = batch_images_middle[:, :, batch_images.shape[2] // 2 - 2:batch_images.shape[2] // 2]
 
         batch_variants.append(batch_images)
     ## variants, batch, c, t, h, w

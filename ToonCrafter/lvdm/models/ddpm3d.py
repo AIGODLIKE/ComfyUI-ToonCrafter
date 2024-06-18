@@ -6,6 +6,7 @@ https://github.com/CompVis/taming-transformers
 -- merci
 """
 
+import os
 from functools import partial
 from contextlib import contextmanager
 import numpy as np
@@ -659,18 +660,27 @@ class LatentDiffusion(DDPM):
 
             results = []
             
-            n_samples = default(self.en_and_decode_n_samples_a_time, self.temporal_length) 
+            n_samples = default(self.en_and_decode_n_samples_a_time, self.temporal_length)
             n_rounds = math.ceil(z.shape[0] / n_samples)
-            with torch.autocast("cuda", enabled=True):
+            from contextlib import nullcontext
+            with torch.autocast("cuda", enabled=True) if torch.cuda.is_available() else nullcontext():
                 for n in range(n_rounds):
                     if isinstance(self.first_stage_model.decoder, VideoDecoder):
                         kwargs.update({"timesteps": len(z[n * n_samples : (n + 1) * n_samples])})
                     else:
                         kwargs = {}
-                    
-                    out = self.first_stage_model.decode(
-                        z[n * n_samples : (n + 1) * n_samples], **kwargs
-                    )
+                    if os.environ.get("TOON_MEM_STRATEGY", "none") == "low":
+                        kwargs2 = kwargs.copy()
+                        kwargs2.update({"timesteps": 3})
+                        out_list = []
+                        for k in range(z.shape[0]):
+                            out = self.first_stage_model.decode(z[[0, k, z.shape[0] - 1]], **kwargs2)
+                            out_list.append(out[1:2])
+                        out = torch.cat(out_list, dim=0)
+                    else:
+                        out = self.first_stage_model.decode(
+                            z[n * n_samples : (n + 1) * n_samples], **kwargs
+                        )
                     results.append(out)
             results = torch.cat(results, dim=0)
 

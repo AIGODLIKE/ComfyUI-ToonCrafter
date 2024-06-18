@@ -3,6 +3,7 @@ from einops import rearrange, repeat
 import logging
 from typing import Any, Callable, Optional, Iterable, Union
 
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,7 +14,7 @@ try:
     import xformers
     import xformers.ops
     XFORMERS_IS_AVAILABLE = True
-except:
+except BaseException:
     XFORMERS_IS_AVAILABLE = False
     logpy.warning("no module 'xformers'. Processing without...")
 
@@ -316,8 +317,20 @@ class CrossAttentionWrapperFusion(CrossAttention):
             .contiguous(),
             (q, k, v),
         )
+        sdpa = torch.nn.functional.scaled_dot_product_attention
 
-        out = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+        def slow_sdpa(q, k, v):
+            out_list = []
+            step = 10
+            for i in range(0, q.shape[0], step):
+                out_i = sdpa(q[i:i + step], k[i:i + step], v[i:i + step])
+                out_list.append(out_i)
+            return torch.cat(out_list, dim=0)
+        # mps 将 qkv 分十次处理, 避免内存溢出
+        if os.environ.get("TOON_MEM_STRATEGY", "none") == "low":
+            out = slow_sdpa(q, k, v)
+        else:
+            out = sdpa(q, k, v)
         out = (
             out.unsqueeze(0)
             .reshape(b, self.heads, out.shape[1], self.dim_head)
@@ -359,14 +372,14 @@ class MemoryEfficientCrossAttentionWrapperFusion(MemoryEfficientCrossAttention):
         k = self.to_k(context)
         v = self.to_v(context)
         k = rearrange(k, "(b l) d c -> b l d c", l=l)
-        k = torch.cat([k[:, [0] * (bt//b)], k[:, [1]*(bt//b)]], dim=2)
+        k = torch.cat([k[:, [0] * (bt // b)], k[:, [1] * (bt // b)]], dim=2)
         k = rearrange(k, "b l d c -> (b l) d c")
 
         v = rearrange(v, "(b l) d c -> b l d c", l=l)
-        v = torch.cat([v[:, [0] * (bt//b)], v[:, [1]*(bt//b)]], dim=2)
+        v = torch.cat([v[:, [0] * (bt // b)], v[:, [1] * (bt // b)]], dim=2)
         v = rearrange(v, "b l d c -> (b l) d c")
 
-        b, _, _ = q.shape  ##actually bt
+        b, _, _ = q.shape  # actually bt
         q, k, v = map(
             lambda t: t.unsqueeze(3)
             .reshape(b, t.shape[1], self.heads, self.dim_head)
@@ -412,12 +425,13 @@ class MemoryEfficientCrossAttentionWrapperFusion(MemoryEfficientCrossAttention):
         )
         out = self.to_out(out)
         out = rearrange(out, "bt (h w) c -> bt c h w", h=h, w=w, c=c)
-        return x + out 
+        return x + out
+
 
 class Combiner(nn.Module):
     def __init__(self, ch) -> None:
         super().__init__()
-        self.conv = nn.Conv2d(ch,ch,1,padding=0)
+        self.conv = nn.Conv2d(ch, ch, 1, padding=0)
 
         nn.init.zeros_(self.conv.weight)
         nn.init.zeros_(self.conv.bias)
@@ -427,17 +441,17 @@ class Combiner(nn.Module):
             return checkpoint(self._forward, x, context, use_reentrant=False)
         else:
             return self._forward(x, context)
-    
+
     def _forward(self, x, context):
-        ## x: b c h w, context: b c 2 h w
+        # x: b c h w, context: b c 2 h w
         b, c, l, h, w = context.shape
         bt, c, h, w = x.shape
         context = rearrange(context, "b c l h w -> (b l) c h w")
         context = self.conv(context)
         context = rearrange(context, "(b l) c h w -> b c l h w", l=l)
-        x = rearrange(x, "(b t) c h w -> b c t h w", t=bt//b)
-        x[:,:,0] = x[:,:,0] + context[:,:,0]
-        x[:,:,-1] = x[:,:,-1] + context[:,:,1]
+        x = rearrange(x, "(b t) c h w -> b c t h w", t=bt // b)
+        x[:, :, 0] = x[:, :, 0] + context[:, :, 0]
+        x[:, :, -1] = x[:, :, -1] + context[:, :, 1]
         x = rearrange(x, "b c t h w -> (b t) c h w")
         return x
 
@@ -460,7 +474,7 @@ class Decoder(nn.Module):
         tanh_out=False,
         use_linear_attn=False,
         attn_type="vanilla-xformers",
-        attn_level=[2,3], 
+        attn_level=[2, 3],
         **ignorekwargs,
     ):
         if "vanilla-xformers" and XFORMERS_IS_AVAILABLE is False:
@@ -564,7 +578,7 @@ class Decoder(nn.Module):
         return self.conv_out.weight
 
     def forward(self, z, ref_context=None, **kwargs):
-        ## ref_context: b c 2 h w, 2 means starting and ending frame
+        # ref_context: b c 2 h w, 2 means starting and ending frame
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
         # timestep embedding
@@ -617,6 +631,8 @@ from lvdm.basics import (
     normalization,
 )
 from lvdm.modules.networks.openaimodel3d import Upsample, Downsample
+
+
 class TimestepBlock(nn.Module):
     """
     Any module where forward() takes timestep embeddings as a second argument.
@@ -627,6 +643,7 @@ class TimestepBlock(nn.Module):
         """
         Apply the module to `x` given `emb` timestep embeddings.
         """
+
 
 class ResBlock(TimestepBlock):
     """
@@ -775,8 +792,11 @@ class ResBlock(TimestepBlock):
         return self.skip_connection(x) + h
 #####
 
+
 #####
 from lvdm.modules.attention_svd import *
+
+
 class VideoTransformerBlock(nn.Module):
     ATTENTION_MODES = {
         "softmax": CrossAttention,
@@ -911,14 +931,18 @@ class VideoTransformerBlock(nn.Module):
 
 #####
 
+
 #####
 import functools
+
+
 def partialclass(cls, *args, **kwargs):
     class NewCls(cls):
         __init__ = functools.partialmethod(cls.__init__, *args, **kwargs)
 
     return NewCls
 ######
+
 
 class VideoResBlock(ResnetBlock):
     def __init__(
@@ -1201,7 +1225,7 @@ class VideoDecoder(Decoder):
     def __init__(
         self,
         *args,
-        video_kernel_size: Union[int, list] = [3,1,1],
+        video_kernel_size: Union[int, list] = [3, 1, 1],
         alpha: float = 0.0,
         merge_strategy: str = "learned",
         time_mode: str = "conv-only",

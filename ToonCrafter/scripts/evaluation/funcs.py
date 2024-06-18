@@ -10,10 +10,11 @@ import torch
 import torchvision
 sys.path.insert(1, os.path.join(sys.path[0], '..', '..'))
 from lvdm.models.samplers.ddim import DDIMSampler
+from lvdm.models.ddpm3d import LatentDiffusion
 from einops import rearrange
 
 
-def batch_ddim_sampling(model, cond, noise_shape, n_samples=1, ddim_steps=50, ddim_eta=1.0,
+def batch_ddim_sampling(model: LatentDiffusion, cond, noise_shape, n_samples=1, ddim_steps=50, ddim_eta=1.0,
                         cfg_scale=1.0, hs=None, temporal_cfg_scale=None, **kwargs):
     ddim_sampler = DDIMSampler(model)
     uncond_type = model.uncond_type
@@ -39,6 +40,8 @@ def batch_ddim_sampling(model, cond, noise_shape, n_samples=1, ddim_steps=50, dd
         # process image embedding token
         if hasattr(model, 'embedder'):
             uc_img = torch.zeros(noise_shape[0], 3, 224, 224).to(model.device)
+            if uc_img.dtype != model.dtype:
+                uc_img = uc_img.to(model.dtype)
             # img: b c h w >> b l c
             uc_img = model.embedder(uc_img)
             uc_img = model.image_proj_model(uc_img)
@@ -71,6 +74,7 @@ def batch_ddim_sampling(model, cond, noise_shape, n_samples=1, ddim_steps=50, dd
                                              conditional_guidance_scale_temporal=temporal_cfg_scale,
                                              x_T=x_T,
                                              fs=fs,
+                                             precision=16 if model.dtype == torch.float16 else 32,
                                              timestep_spacing=timestep_spacing,
                                              guidance_rescale=guidance_rescale,
                                              **kwargs

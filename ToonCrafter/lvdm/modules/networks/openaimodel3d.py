@@ -575,7 +575,8 @@ class UNetModel(nn.Module):
             fs_embed = self.fps_embedding(fs_emb)
             fs_embed = fs_embed.repeat_interleave(repeats=t, dim=0)
             emb = emb + fs_embed
-
+        if self.dtype != emb.dtype:
+            self.dtype = emb.dtype
         h = x.type(self.dtype)
         adapter_idx = 0
         hs = []

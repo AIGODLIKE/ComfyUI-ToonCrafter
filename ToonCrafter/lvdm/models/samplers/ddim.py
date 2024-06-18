@@ -189,6 +189,8 @@ class DDIMSampler(object):
                                       **kwargs)
 
             img, pred_x0 = outs
+            if precision == 16:
+                img = img.to(dtype=torch.float16)
             if callback:
                 callback(i)
             if img_callback:

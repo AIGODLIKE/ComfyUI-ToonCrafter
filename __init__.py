@@ -24,7 +24,6 @@ USER_DEF_CLIP = Path(__file__).parent.joinpath("models/open_clip_pytorch_model.b
 if USER_DEF_CLIP.exists():
     os.environ["USER_DEF_CLIP"] = USER_DEF_CLIP.as_posix()
 # os.environ["no_proxy"] = "localhost, 127.0.0.1, ::1"
-
 ROOT = Path(__file__).parent.joinpath("ToonCrafter")
 sys.path.append(Path(__file__).parent.as_posix())
 from ToonCrafter.utils.utils import instantiate_from_config
@@ -51,6 +50,7 @@ class ToonCrafterNode:
                 "image": ("IMAGE", ),
                 "image2": ("IMAGE", ),
                 "ckpt_name": (get_models(), ),
+                "vram_opt_strategy": (["none", "low"], ),
                 "prompt": ("STRING", {"multiline": True, "dynamicPrompts": True}),
                 # "clip": ("CLIP", ),
                 "seed": ("INT", {"default": 123, "min": 0, "max": 0xffffffffffffffff}),
@@ -86,6 +86,7 @@ class ToonCrafterNode:
         model_config = config.pop("model", OmegaConf.create())
         model_config['params']['unet_config']['params']['use_checkpoint'] = False
         model_list = []
+        # mm.unload_all_models()
         for gpu_id in range(gpu_num):
             model = instantiate_from_config(model_config)
             # model = model.cuda(gpu_id)
@@ -98,6 +99,7 @@ class ToonCrafterNode:
         self.save_fps = 8
         self.is_cuda = torch.cuda.is_available()
         self.is_mps = torch.backends.mps.is_available()
+        self.is_cpu = torch.cpu.is_available()
 
     @contextmanager
     def optional_autocast(device):
@@ -108,7 +110,8 @@ class ToonCrafterNode:
             print(f"Autocast is not supported: {e}")
             yield
 
-    def get_image(self, image: torch.Tensor, ckpt_name, prompt, steps=50, cfg_scale=7.5, eta=1.0, frame_count=3, fps=8, seed=123, image2: torch.Tensor = None):
+    def get_image(self, image: torch.Tensor, ckpt_name, vram_opt_strategy, prompt, steps=50, cfg_scale=7.5, eta=1.0, frame_count=3, fps=8, seed=123, image2: torch.Tensor = None):
+        os.environ["TOON_MEM_STRATEGY"] = vram_opt_strategy
         self.init(ckpt_name=ckpt_name)
         self.save_fps = fps
         seed = seed % 4294967295
@@ -124,10 +127,17 @@ class ToonCrafterNode:
         if steps > 60:
             steps = 60
         model: torch.nn.Module = self.model_list[gpu_id]
+        half = mm.should_use_bf16() or mm.should_use_fp16() or vram_opt_strategy == "low"
+        if half:
+            model = model.half()
+            image = image.half()
+            image2 = image2.half()
         if self.is_cuda:
-            model = model.cuda()
+            model = model.to('cuda')
         elif self.is_mps:
             model = model.to('mps')
+        elif self.is_cpu:
+            model = model.to('cpu')
         batch_size = 1
         channels = model.model.diffusion_model.out_channels
         frames = model.temporal_length
@@ -141,9 +151,9 @@ class ToonCrafterNode:
                 stack.enter_context(torch.cuda.amp.autocast())
             # stack.enter_context(self.optional_autocast(device=model.device))
             text_emb = model.get_learned_conditioning([prompt])
-
+            model.cond_stage_model.to("cpu")
             # img cond
-            img_tensor = image[0].permute(2, 0, 1).float().to(model.device)
+            img_tensor = image[0].permute(2, 0, 1).to(model.device)
             img_tensor = (img_tensor - 0.5) * 2
 
             image_tensor_resized = transform(img_tensor)  # 3,h,w
@@ -151,16 +161,23 @@ class ToonCrafterNode:
 
             # z = get_latent_z(model, videos) #bc,1,hw
             videos = repeat(videos, 'b c t h w -> b c (repeat t) h w', repeat=frames // 2)
-            img_tensor2 = image2[0].permute(2, 0, 1).float().to(model.device)
+            img_tensor2 = image2[0].permute(2, 0, 1).to(model.device)
             img_tensor2 = (img_tensor2 - 0.5) * 2
             image_tensor_resized2 = transform(img_tensor2)  # 3,h,w
             videos2 = image_tensor_resized2.unsqueeze(0).unsqueeze(2)  # bchw
             videos2 = repeat(videos2, 'b c t h w -> b c (repeat t) h w', repeat=frames // 2)
 
             videos = torch.cat([videos, videos2], dim=2)
+            # v10 = torch.mps.driver_allocated_memory() / 1024**3
+            mm.soft_empty_cache()
+            # v11 = torch.mps.driver_allocated_memory() / 1024**3
             z, hs = self.get_latent_z_with_hidden_states(model, videos)
+            model.cond_stage_model.to(model.device)
+            # v20 = torch.mps.driver_allocated_memory() / 1024**3
+            mm.soft_empty_cache()
+            # v21 = torch.mps.driver_allocated_memory() / 1024**3
 
-            img_tensor_repeat = torch.zeros_like(z)
+            img_tensor_repeat = torch.zeros_like(z).to(dtype=model.dtype)
 
             img_tensor_repeat[:, :, :1, :, :] = z[:, :, :1, :, :]
             img_tensor_repeat[:, :, -1:, :, :] = z[:, :, -1:, :, :]
@@ -170,13 +187,15 @@ class ToonCrafterNode:
 
             imtext_cond = torch.cat([text_emb, img_emb], dim=1)
 
+            del cond_images, text_emb, img_emb, videos, videos2, image_tensor_resized2, img_tensor2, image_tensor_resized, image
             fs = torch.tensor([frame_count], dtype=torch.long, device=model.device)
             cond = {"c_crossattn": [imtext_cond], "fs": fs, "c_concat": [img_tensor_repeat]}
 
             def cb(step):
                 print(f"step: {step}", end='\r')
-                pbar.update_absolute(step)
+                pbar.update_absolute(step + 1)
 
+            mm.soft_empty_cache()
             # inference
             batch_samples = batch_ddim_sampling(model, cond, noise_shape, n_samples=1, ddim_steps=steps, ddim_eta=eta, cfg_scale=cfg_scale, hs=hs, callback=cb)
 
@@ -190,18 +209,36 @@ class ToonCrafterNode:
             if len(prompt_str) == 0:
                 prompt_str = 'empty_prompt'
 
-        # save_videos(batch_samples, self.result_dir, filenames=[prompt_str], fps=self.save_fps)
+        # self.save_videos(batch_samples, self.result_dir, filenames=[prompt_str], fps=self.save_fps)
         print(f"Saved in {prompt_str}. Time used: {(time.time() - start):.2f} seconds")
         try:
             # frame_count, width, height, channel
             batch_samples = batch_samples[0][0].permute(1, 2, 3, 0)
+            if half:
+                batch_samples = batch_samples.to(dtype=torch.float32)
         except Exception as e:
-            sys.stderr.write(e)
+            sys.stderr.write(f"{e}\n")
             return (None, )
         batch_samples = (batch_samples + 1.0) * 0.5
+        mm.soft_empty_cache()
         model = model.cpu()
         return (batch_samples, )
 
+    def save_videos(self, batch_tensors, savedir, filenames, fps=10):
+        import torchvision
+        # b,samples,c,t,h,w
+        n_samples = batch_tensors.shape[1]
+        for idx, vid_tensor in enumerate(batch_tensors):
+            video = vid_tensor.detach().cpu()
+            video = torch.clamp(video.float(), -1., 1.)
+            video = video.permute(2, 0, 1, 3, 4)  # t,n,c,h,w
+            frame_grids = [torchvision.utils.make_grid(framesheet, nrow=int(n_samples)) for framesheet in video]  # [3, 1*h, n*w]
+            grid = torch.stack(frame_grids, dim=0)  # stack in temporal dim [t, 3, n*h, w]
+            grid = (grid + 1.0) / 2.0
+            grid = (grid * 255).to(torch.uint8).permute(0, 2, 3, 1)
+            savepath = os.path.join(savedir, f"{filenames[idx]}.mp4")
+            torchvision.io.write_video(savepath, grid, fps=fps, video_codec='h264', options={'crf': '10'})
+            
     def download_model(self):
         REPO_ID = 'Doubiiu/ToonCrafter'
         filename_list = ['model.ckpt']
