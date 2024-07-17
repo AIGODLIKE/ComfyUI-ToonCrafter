@@ -9,6 +9,6 @@ ToonCrafter/checkpoints
 results
 backup
 LOG
-models
+/models
 ToonCrafter/tmp
 Thumbs.db
